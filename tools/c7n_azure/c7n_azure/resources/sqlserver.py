@@ -17,16 +17,67 @@ import logging
 from c7n_azure.filters import FirewallRulesFilter
 from c7n_azure.provider import resources
 from c7n_azure.resources.arm import ArmResourceManager
-from netaddr import IPRange
+from netaddr import IPRange, IPSet
 
 
 @resources.register('sqlserver')
 class SqlServer(ArmResourceManager):
+    """SQL Server Resource
+
+    :example:
+
+    This policy will find all SQL servers with average DTU consumption under
+    10 percent over the last 72 hours
+
+    .. code-block:: yaml
+
+        policies:
+          - name: sqlserver-under-utilized
+            resource: azure.sqlserver
+            filters:
+              - type: metric
+                metric: dtu_consumption_percent
+                op: lt
+                aggregation: average
+                threshold: 10
+                timeframe: 72
+                filter: "ElasticPoolResourceId eq '*'"
+                no_data_action: include
+
+    :example:
+
+    This policy will find all SQL servers without any firewall rules defined.
+
+    .. code-block:: yaml
+
+        policies:
+          - name: find-sqlserver-without-firewall-rules
+            resource: azure.sqlserver
+            filters:
+              - type: firewall-rules
+                equal: []
+
+    :example:
+
+    This policy will find all SQL servers allowing traffic from 1.2.2.128/25 CIDR.
+
+    .. code-block:: yaml
+
+        policies:
+          - name: find-sqlserver-allowing-subnet
+            resource: azure.sqlserver
+            filters:
+              - type: firewall-rules
+                include: ['1.2.2.128/25']
+    """
 
     class resource_type(ArmResourceManager.resource_type):
+        doc_groups = ['Databases']
+
         service = 'azure.mgmt.sql'
         client = 'SqlManagementClient'
         enum_spec = ('servers', 'list', None)
+        resource_type = 'Microsoft.Sql/servers'
 
 
 @SqlServer.filter_registry.register('firewall-rules')
@@ -50,6 +101,9 @@ class SqlServerFirewallRulesFilter(FirewallRulesFilter):
             resource['resourceGroup'],
             resource['name'])
 
-        resource_rules = set([IPRange(r.start_ip_address, r.end_ip_address) for r in query])
+        resource_rules = IPSet()
+
+        for r in query:
+            resource_rules.add(IPRange(r.start_ip_address, r.end_ip_address))
 
         return resource_rules

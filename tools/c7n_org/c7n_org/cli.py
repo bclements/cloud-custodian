@@ -38,9 +38,9 @@ from c7n.credentials import assumed_session, SessionFactory
 from c7n.executor import MainThreadExecutor
 from c7n.config import Config
 from c7n.policy import PolicyCollection
+from c7n.provider import get_resource_class
 from c7n.reports.csvout import Formatter, fs_record_set
 from c7n.resources import load_resources
-from c7n.manager import resources as resource_registry
 from c7n.utils import CONN_CACHE, dumps
 
 from c7n_org.utils import environ, account_tags
@@ -375,8 +375,8 @@ def report(config, output, use, output_dir, accounts,
     prefix_fields = OrderedDict(
         (('Account', 'account'), ('Region', 'region'), ('Policy', 'policy')))
     config = Config.empty()
-    factory = resource_registry.get(list(resource_types)[0])
 
+    factory = get_resource_class(list(resource_types)[0])
     formatter = Formatter(
         factory.resource_type,
         extra_fields=field,
@@ -546,6 +546,10 @@ def run_account(account, region, policies_config, output_path,
                 policy_counts[p.name] = resources and len(resources) or 0
                 if not resources:
                     continue
+                if not config.dryrun and p.execution_mode != 'pull':
+                    log.info("Ran account:%s region:%s policy:%s provisioned time:%0.2f",
+                             account['name'], region, p.name, time.time() - st)
+                    continue
                 log.info(
                     "Ran account:%s region:%s policy:%s matched:%d time:%0.2f",
                     account['name'], region, p.name, len(resources),
@@ -553,8 +557,8 @@ def run_account(account, region, policies_config, output_path,
             except ClientError as e:
                 success = False
                 if e.response['Error']['Code'] == 'AccessDenied':
-                    log.warning('Access denied account:%s region:%s',
-                                account['name'], region)
+                    log.warning('Access denied api:%s policy:%s account:%s region:%s',
+                                e.operation_name, p.name, account['name'], region)
                     return policy_counts, success
                 log.error(
                     "Exception running policy:%s account:%s region:%s error:%s",

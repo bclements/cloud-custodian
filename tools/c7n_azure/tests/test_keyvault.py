@@ -16,10 +16,12 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from azure_common import BaseTest, arm_template
 from c7n_azure.resources.key_vault import KeyVaultUpdateAccessPolicyAction, WhiteListFilter
 from c7n_azure.session import Session
-from c7n.utils import local_session
+from c7n_azure.utils import GraphHelper
 from mock import patch, Mock
 from msrestazure.azure_exceptions import CloudError
 from requests import Response
+
+from c7n.utils import local_session
 
 
 class KeyVaultTest(BaseTest):
@@ -130,7 +132,7 @@ class KeyVaultTest(BaseTest):
         self.assertEqual(len(resources), 0)
 
     @arm_template('keyvault.json')
-    @patch('c7n_azure.utils.GraphHelper.get_principal_dictionary', )
+    @patch.object(GraphHelper, 'get_principal_dictionary')
     def test_whitelist_not_authorized(self, get_principal_dictionary):
         """Tests that an exception is thrown when both:
           The Microsoft Graph call fails.
@@ -204,3 +206,75 @@ class KeyVaultTest(BaseTest):
         client = local_session(Session) \
             .client('azure.mgmt.keyvault.KeyVaultManagementClient').vaults
         return client.__module__ + '.' + client.__class__.__name__
+
+    @arm_template('keyvault.json')
+    def test_firewall_rules_include(self):
+        p = self.load_policy({
+            'name': 'test-azure-keyvault',
+            'resource': 'azure.keyvault',
+            'filters': [
+                {'type': 'firewall-rules',
+                 'include': ['3.1.1.1']}],
+        })
+        resources = p.run()
+        self.assertEqual(len(resources), 1)
+
+    @arm_template('keyvault.json')
+    def test_firewall_rules_not_include_all_ranges(self):
+        p = self.load_policy({
+            'name': 'test-azure-keyvault',
+            'resource': 'azure.keyvault',
+            'filters': [
+                {'type': 'firewall-rules',
+                 'include': ['3.1.1.1', '3.1.1.2-3.1.1.2']}],
+        }, validate=True)
+        resources = p.run()
+        self.assertEqual(0, len(resources))
+
+    @arm_template('keyvault.json')
+    def test_firewall_rules_include_cidr(self):
+        p = self.load_policy({
+            'name': 'test-azure-keyvault',
+            'resource': 'azure.keyvault',
+            'filters': [
+                {'type': 'firewall-rules',
+                 'include': ['1.2.2.128/25']}],
+        }, validate=True)
+        resources = p.run()
+        self.assertEqual(1, len(resources))
+
+    @arm_template('keyvault.json')
+    def test_firewall_rules_not_include_cidr(self):
+        p = self.load_policy({
+            'name': 'test-azure-keyvault',
+            'resource': 'azure.keyvault',
+            'filters': [
+                {'type': 'firewall-rules',
+                 'include': ['2.2.2.128/25']}],
+        }, validate=True)
+        resources = p.run()
+        self.assertEqual(0, len(resources))
+
+    @arm_template('keyvault.json')
+    def test_firewall_rules_equal(self):
+        p = self.load_policy({
+            'name': 'test-azure-keyvault',
+            'resource': 'azure.keyvault',
+            'filters': [
+                {'type': 'firewall-rules',
+                 'equal': ['3.1.1.1-3.1.1.1', '1.2.2.128/25']}],
+        }, validate=True)
+        resources = p.run()
+        self.assertEqual(1, len(resources))
+
+    @arm_template('keyvault.json')
+    def test_firewall_rules_not_equal(self):
+        p = self.load_policy({
+            'name': 'test-azure-keyvault',
+            'resource': 'azure.keyvault',
+            'filters': [
+                {'type': 'firewall-rules',
+                 'equal': ['3.1.1.1-3.1.1.2', '3.1.1.1-3.1.1.1', '1.2.2.128/25']}],
+        }, validate=True)
+        resources = p.run()
+        self.assertEqual(0, len(resources))

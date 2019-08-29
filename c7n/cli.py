@@ -92,7 +92,7 @@ def _default_options(p, blacklist=""):
     if 'log-group' not in blacklist:
         p.add_argument(
             "-l", "--log-group", default=None,
-            help="Cloudwatch Log Group to send policy logs")
+            help="Location to send policy logs (Ex: AWS CloudWatch Log Group)")
     else:
         p.add_argument("--log-group", default=None, help=argparse.SUPPRESS)
 
@@ -240,10 +240,15 @@ def setup_parser():
         "--skip-validation",
         action="store_true",
         help="Skips validation of policies (assumes you've run the validate command seperately).")
+
+    metrics_help = ("Emit metrics to provider metrics. Specify 'aws', 'gcp', or 'azure'. "
+            "For more details on aws metrics options, see: "
+            "https://cloudcustodian.io/docs/aws/usage.html#metrics")
+
     run.add_argument(
         "-m", "--metrics-enabled",
         default=None, nargs="?", const="aws",
-        help="Emit metrics to provider metrics")
+        help=metrics_help)
     run.add_argument(
         "--trace",
         dest="tracer",
